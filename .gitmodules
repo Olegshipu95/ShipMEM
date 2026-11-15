@@ -1,0 +1,3 @@
+[submodule "CppTrader"]
+	path = CppTrader
+	url = https://github.com/chronoxor/CppTrader.git
