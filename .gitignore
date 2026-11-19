@@ -1,5 +1,10 @@
 /intro_letter.pdf
 
+# Local LLVM compiler and runtime build artifacts
+/clang_build/
+/libc_build/
+/libc_install/
+
 my_progress/diploma-worklog.*
 !my_progress/diploma-worklog.tex
 !my_progress/diploma-worklog.pdf

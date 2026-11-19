@@ -1140,21 +1140,101 @@ std::vector<FieldBase> с использованием специализиро�
     по профилю, вернусь к выбору проекта.
 \end{enumerate}
 
+\subsection{Сборка Clang с выбранным LLVM}
+
+Шаги решения:
+\begin{enumerate}
+    \item Для повторения результата в будущем, я зафиксировал коммит LLVM на
+        последнем стабильном релизе и поместил его в submodule проекта.
+        \begin{itemize}
+            \item commit - 392dfff97d29b59d77e5cac6d4b6ef2585fe7117
+            \item тег релиза - llvmorg-23.1.5
+            \item загрузка submodule - git submodule update --init --depth=1 -- llvm-project
+        \end{itemize}
+    \item Зафиксируем версию clang и clang++:
+        \begin{itemize}
+            \item /usr/bin/clang-22 --version $\to$ 22.1.2 (1ubuntu1)
+            \item /usr/bin/clang++22 --version $\to$ 22.1.2 (1ubuntu1)
+        \end{itemize}
+    \item Настроим сборку clang:
+        \begin{lstlisting}
+            cmake -S llvm-project/llvm \
+             -B ../llvm-build-23.1.5 \
+             -G 'Unix Makefiles' \
+             -DCMAKE_BUILD_TYPE=Release \
+             -DCMAKE_C_COMPILER=/usr/bin/clang-22 \
+             -DCMAKE_CXX_COMPILER=/usr/bin/clang++-22 \
+             -DLLVM_ENABLE_PROJECTS=clang \
+             -DLLVM_TARGETS_TO_BUILD=X86 \
+             -DLLVM_INCLUDE_TESTS=OFF \
+             -DLLVM_INCLUDE_EXAMPLES=OFF \
+             -DLLVM_INCLUDE_BENCHMARKS=OFF
+        \end{lstlisting}
+    \item Собираем компилятор и встроенные загловки. 
+    \item Фиксируем получившуюся версию и SHA-256 (для будущих воспроизведений):
+        \begin{lstlisting}
+            clang version 23.1.5 
+            SHA:
+                a0b07ab9d223d7fe49cdae4734217dcbf636a32f5ca3d8f063f176270ef74c81
+        \end{lstlisting}
+    \item Для последующей сборки проектов необходимо будет передать:
+        \begin{lstlisting}
+            -DCMAKE_C_COMPILER=/home/oleg/diploma/ShipMEM/clang_build/bin/clang
+            -DCMAKE_CXX_COMPILER=/home/oleg/diploma/ShipMEM/clang_build/bin/clang++
+        \end{lstlisting}
+\end{enumerate}
+
+После сборки Clang необходимо собрать и libc++ для нее, чтобы CppTrader мог
+вызывать стандартную библиотеку. Напишу сюда скрипты по скачиванию, чтобы не забыть.
+
+\begin{itemize}
+    \item Настроить новую сборку с помощью скрипта:
+        \begin{lstlisting}
+            cmake -S llvm-project/runtimes -B libc_build \
+                -G 'Unix Makefiles' \
+                -DCMAKE_BUILD_TYPE=Release \
+                -DCMAKE_C_COMPILER="$PWD/clang_build/bin/clang" \
+                -DCMAKE_CXX_COMPILER="$PWD/clang_build/bin/clang++" \
+                -DCMAKE_INSTALL_PREFIX="$PWD/libc_install" \
+                -DLLVM_ENABLE_RUNTIMES='libcxx;libcxxabi;libunwind' \
+                -DLLVM_ENABLE_PER_TARGET_RUNTIME_DIR=OFF \
+                -DLIBCXXABI_USE_LLVM_UNWINDER=ON
+        \end{lstlisting}
+    \item Непосредственно собрать библиотеку:
+        \begin{lstlisting}
+            cmake --build libc_build --parallel 6
+        \end{lstlisting}
+    \item Установить библиотеку в отдельный каталог:
+        \begin{lstlisting}
+            cmake --install libc_build
+        \end{lstlisting}
+\end{itemize}
+
+По итогам проверю, что у меня все корректно установилось:
+\begin{lstlisting}
+    ~/d/ShipMEM main  ls -l libc_build/lib/libc++abi.so.1.0
+
+.rwxrwxr-x 406k oleg 18 Nov 22:07 libc_build/lib/libc++abi.so.1.0
+\end{lstlisting}
+
+По итогам главы установлен Clang, а так же libc
+
 \subsection{Анализ CppTrader}
 
-Теперь я последовательно выполню все действия из прошлого раздела:
+Теперь я последовательно выполню все действия из раздела 3.3:
 \subsubsection{Зафиксировать исходный прогон.}
 
-\underline{Важное уточнение:} Для проверки сборочного процесса я сначала использовал GCC.
+\underline{Важное уточнение:} Для проверки сборочного процесса я сначала использовал
+GCC.
 Для исходных
-замеров нужен Clang из той же ревизии LLVM, на которой будет основан патч.
+замеров нужен Clang из той же ревизии LLVM, на которой будет основан патч, то есть 
+из главы 3.4.
 Сравнение исходной и изменённой версий будет выполнено на сборках CppTrader,
 полученных этими двумя версиями Clang с одинаковыми настройками.
 
 
-Для точной работы и возобновления тестовых случаев я написал 
-сабмодуль CppTrader в составе ShipMEM. Для корректных измерений я принял решение
-взять последний коммит на текущий момент.
+CppTrader подключён к ShipMEM как сабмодуль. Для повторения измерений
+используется ревизия, закреплённая в ShipMEM.
 
 Сборка выполнялась на:
 \begin{enumerate}
@@ -1212,6 +1292,93 @@ cmake -S . -B temp \
     \caption{CppTrade Smoke tests}
 \end{figure}
 
+\subsubsection{Сборка CppTrader на Clang.}
+
+Для того, чтобы запустить CppTrader на моем Clang, я применил следующую сборку:
+
+\begin{lstlisting}
+                cmake -S CppTrader -B "$build" \
+                        -G 'Unix Makefiles' \
+                        -DCMAKE_BUILD_TYPE=Release \
+                        -DCMAKE_C_COMPILER="$clang_bin/clang" \
+                        -DCMAKE_CXX_COMPILER="$clang_bin/clang++" \
+                        -DCMAKE_C_FLAGS_RELEASE='-O3 -DNDEBUG -g' \
+                        -DCMAKE_CXX_FLAGS_RELEASE='-O3 -DNDEBUG -g' \
+                        -DCMAKE_CXX_FLAGS="-isystem $libcxx_prefix/include/c++/v1" \
+                        -DCMAKE_EXE_LINKER_FLAGS="-L$libdir -Wl,--disable-new-dtags,-rpath,$libdir" \
+                        -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+\end{lstlisting}
+
+При запуске бенчмарка на готовом фрагменте ITCH я получил выполнение всех тестов:
+
+\begin{verbatim}
+taskset -c 1 CppTrader/temp/clang-23.1.5/cpptrader-performance-market_manager \
+                            < CppTrader/tools/itch/sample.itch
+ITCH processing...Done!
+
+Errors: 0
+
+Processing time: 77.645 ms
+Total ITCH messages: 1563071
+ITCH message latency: 49 ns
+ITCH message throughput: 20130810 msg/s
+Total market updates: 254853
+Market update latency: 304 ns
+Market update throughput: 3282254 upd/s
+
+Market statistics: 
+Max symbols: 8352
+Max order books: 8352
+Max order book levels: 562
+Max order book orders: 517
+Max orders: 56245
+
+Order statistics: 
+Add order operations: 58915
+Update order operations: 27
+Delete order operations: 58915
+Execute order operations: 2435
+\end{verbatim}
+
+То есть тесты прошли, билд прошел без ошибок.
+
+\paragraph{Подведу итог, что я сделал}
+Так как CppTrader является библиотекой компонентов, то для тестирования есть
+исполняемые файлы типа \textbf{cpptrader-performance-market\_manage}, которые
+являются точкой входа в программу и которые используют как раз эту библиотеку.
+
+Именно из-за этого мы собрали cpptrader (саму библиотеку), в которой находится
+код разбора ITCH и работы с заявками и стаканами, но у нее нет точки входа main,
+из-за чего ее нельзая запустить из терминала.
+
+После того, как мы собрали cpptrader-performance-market\_manage, то для входных
+данных я использовал файл с ITCH сообщениями от разработчиков, который занимает
+около 73 Мб и 1'563'071 сообщений.
+
+\underline{Важное уточнение}, что основной цикл этого бенчмарка - однопоточный,
+так что я зафиксировал конкретное ядро процессора (1 cpu\_core), так как он в
+моей системе является производительным. 
+
+\paragraph{Проверка аппаратных событий.}
+
+
+\begin{center}
+\begin{tabular}{lrrrrr}
+\toprule
+Прогон & Сообщений/с & Обновлений/с & Циклы/обн. & L3/обн. & dTLB/обн. \\
+\midrule
+1 & --- & --- & --- & --- & --- \\
+2 & --- & --- & --- & --- & --- \\
+3 & --- & --- & --- & --- & --- \\
+4 & --- & --- & --- & --- & --- \\
+5 & --- & --- & --- & --- & --- \\
+\midrule
+Медиана & --- & --- & --- & --- & --- \\
+Минимум & --- & --- & --- & --- & --- \\
+Максимум & --- & --- & --- & --- & --- \\
+\bottomrule
+\end{tabular}
+\end{center}
 
 \subsection{Отчет}
 
