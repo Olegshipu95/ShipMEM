@@ -1156,20 +1156,8 @@ std::vector<FieldBase> с использованием специализиро�
             \item /usr/bin/clang-22 --version $\to$ 22.1.2 (1ubuntu1)
             \item /usr/bin/clang++22 --version $\to$ 22.1.2 (1ubuntu1)
         \end{itemize}
-    \item Настроим сборку clang:
-        \begin{lstlisting}
-            cmake -S llvm-project/llvm \
-             -B ../llvm-build-23.1.5 \
-             -G 'Unix Makefiles' \
-             -DCMAKE_BUILD_TYPE=Release \
-             -DCMAKE_C_COMPILER=/usr/bin/clang-22 \
-             -DCMAKE_CXX_COMPILER=/usr/bin/clang++-22 \
-             -DLLVM_ENABLE_PROJECTS=clang \
-             -DLLVM_TARGETS_TO_BUILD=X86 \
-             -DLLVM_INCLUDE_TESTS=OFF \
-             -DLLVM_INCLUDE_EXAMPLES=OFF \
-             -DLLVM_INCLUDE_BENCHMARKS=OFF
-        \end{lstlisting}
+    \item Настроим сборку Clang.
+        Параметры команды \texttt{cmake -S llvm-project/llvm} приведены в приложении~\ref{app:cmd-clang}.
     \item Собираем компилятор и встроенные загловки. 
     \item Фиксируем получившуюся версию и SHA-256 (для будущих воспроизведений):
         \begin{lstlisting}
@@ -1185,21 +1173,11 @@ std::vector<FieldBase> с использованием специализиро�
 \end{enumerate}
 
 После сборки Clang необходимо собрать и libc++ для нее, чтобы CppTrader мог
-вызывать стандартную библиотеку. Напишу сюда скрипты по скачиванию, чтобы не забыть.
+вызывать стандартную библиотеку.
 
 \begin{itemize}
-    \item Настроить новую сборку с помощью скрипта:
-        \begin{lstlisting}
-            cmake -S llvm-project/runtimes -B libc_build \
-                -G 'Unix Makefiles' \
-                -DCMAKE_BUILD_TYPE=Release \
-                -DCMAKE_C_COMPILER="$PWD/clang_build/bin/clang" \
-                -DCMAKE_CXX_COMPILER="$PWD/clang_build/bin/clang++" \
-                -DCMAKE_INSTALL_PREFIX="$PWD/libc_install" \
-                -DLLVM_ENABLE_RUNTIMES='libcxx;libcxxabi;libunwind' \
-                -DLLVM_ENABLE_PER_TARGET_RUNTIME_DIR=OFF \
-                -DLIBCXXABI_USE_LLVM_UNWINDER=ON
-        \end{lstlisting}
+    \item Настроить сборку библиотек LLVM.
+        Команда \texttt{cmake -S llvm-project/runtimes} с параметрами сборки приведена в приложении~\ref{app:cmd-libcxx}.
     \item Непосредственно собрать библиотеку:
         \begin{lstlisting}
             cmake --build libc_build --parallel 6
@@ -1267,13 +1245,7 @@ vld              272be15648e29560221b2332821d71280110cc9d
 
 Штатный скрипт собирает конфигурацию
 \texttt{Release}, так что пришлось добавить \texttt{-g} к флагам C и C++ конфигурации.
-Из корня CppTrader выполняются команды:
-\begin{verbatim}
-cmake -S . -B temp \
-  -DCMAKE_C_FLAGS_RELEASE='-O3 -DNDEBUG -g' \
-  -DCMAKE_CXX_FLAGS_RELEASE='-O3 -DNDEBUG -g'
-(cd build && ./unix.sh)
-\end{verbatim}
+Из корня CppTrader запускаю \texttt{cmake -S . -B temp}, затем штатный \texttt{build/unix.sh}. Полные команды приведены в приложении~\ref{app:cmd-gcc}.
 
 В сгенерированном файле \texttt{flags.make} для бенчмарка указаны флаги:
 \begin{verbatim}
@@ -1294,26 +1266,11 @@ cmake -S . -B temp \
 
 \subsubsection{Сборка CppTrader на Clang.}
 
-Для того, чтобы запустить CppTrader на моем Clang, я применил следующую сборку:
+Конфигурацию \texttt{Release} с флагами \texttt{-O3 -DNDEBUG -g} и локальной \texttt{libc++} задаю командой из приложения~\ref{app:cmd-cpptrader}.
 
-\begin{lstlisting}
-                cmake -S CppTrader -B "$build" \
-                        -G 'Unix Makefiles' \
-                        -DCMAKE_BUILD_TYPE=Release \
-                        -DCMAKE_C_COMPILER="$clang_bin/clang" \
-                        -DCMAKE_CXX_COMPILER="$clang_bin/clang++" \
-                        -DCMAKE_C_FLAGS_RELEASE='-O3 -DNDEBUG -g' \
-                        -DCMAKE_CXX_FLAGS_RELEASE='-O3 -DNDEBUG -g' \
-                        -DCMAKE_CXX_FLAGS="-isystem $libcxx_prefix/include/c++/v1" \
-                        -DCMAKE_EXE_LINKER_FLAGS="-L$libdir -Wl,--disable-new-dtags,-rpath,$libdir" \
-                        -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
-\end{lstlisting}
-
-При запуске бенчмарка на готовом фрагменте ITCH я получил выполнение всех тестов:
+Бенчмарк запускаю на CPU~1 через \texttt{taskset -c 1}. Полная команда приведена в приложении~\ref{app:cmd-itch}.
 
 \begin{verbatim}
-taskset -c 1 CppTrader/temp/clang-23.1.5/cpptrader-performance-market_manager \
-                            < CppTrader/tools/itch/sample.itch
 ITCH processing...Done!
 
 Errors: 0
@@ -1382,36 +1339,9 @@ TLB считает завершенные обходы таблиц страни
 
 
 
-Общий скрипт для
-получения этих параметров:
+Три события проверяю одним вызовом \texttt{taskset -c 1 perf stat}. Список событий и полная команда приведены в приложении~\ref{app:cmd-perf}.
 
-\begin{verbatim}
-    taskset -c 1 perf stat \
-  -e cpu_core/cycles/u \
-  -e cpu_core/mem_load_retired.l3_miss/u \
-  -e cpu_core/dtlb_load_misses.walk_completed/u \
-  -- CppTrader/temp/clang-23.1.5/cpptrader-performance-market_manager \
-  < CppTrader/tools/itch/sample.itch
-\end{verbatim}
-
-Важный скрипт для прогона:
-\begin{verbatim}
-cat CppTrader/tools/itch/sample.itch > /dev/null
-
-for run in warmup-1 warmup-2 warmup-3 1 2 3 4 5
-    echo "Прогон $run"
-
-    taskset -c 1 perf stat --no-big-num -x ';' \
-      -e cpu_core/cycles/u \
-      -e cpu_core/mem_load_retired.l3_miss/u \
-      -e cpu_core/dtlb_load_misses.walk_completed/u \
-      -o CppTrader/temp/clang-23.1.5/baseline-full-itch/perf-$run.txt \
-      -- CppTrader/temp/clang-23.1.5/cpptrader-performance-market_manager \
-      < CppTrader/tools/itch/sample.itch \
-      > CppTrader/temp/clang-23.1.5/baseline-full-itch/bench-$run.txt
-    or break
-end
-\end{verbatim}
+Сначала читаю \texttt{sample.itch} в \texttt{/dev/null}, затем выполняю три прогревочных и пять измеряемых запусков. Цикл для fish приведён в приложении~\ref{app:cmd-baseline}.
 
 После прогона в директории baseline-full-itch будут находиться bench-*.txt и
 perf-*.txt файлы. В bench - вывод CppTrader, а в perf - данные счетчиков для
@@ -1456,5 +1386,104 @@ CppTrader выводит пропускную способность, а \texttt
 
 
 \subsection{Отчет}
+
+\clearpage
+\appendix
+\section{Команды сборки и замеров}
+
+\subsection{Конфигурация сборки Clang}
+\label{app:cmd-clang}
+\begin{lstlisting}
+cmake -S llvm-project/llvm \
+ -B ../llvm-build-23.1.5 \
+ -G 'Unix Makefiles' \
+ -DCMAKE_BUILD_TYPE=Release \
+ -DCMAKE_C_COMPILER=/usr/bin/clang-22 \
+ -DCMAKE_CXX_COMPILER=/usr/bin/clang++-22 \
+ -DLLVM_ENABLE_PROJECTS=clang \
+ -DLLVM_TARGETS_TO_BUILD=X86 \
+ -DLLVM_INCLUDE_TESTS=OFF \
+ -DLLVM_INCLUDE_EXAMPLES=OFF \
+ -DLLVM_INCLUDE_BENCHMARKS=OFF
+\end{lstlisting}
+
+\subsection{Конфигурация сборки библиотек LLVM}
+\label{app:cmd-libcxx}
+\begin{lstlisting}
+cmake -S llvm-project/runtimes -B libc_build \
+    -G 'Unix Makefiles' \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_C_COMPILER="$PWD/clang_build/bin/clang" \
+    -DCMAKE_CXX_COMPILER="$PWD/clang_build/bin/clang++" \
+    -DCMAKE_INSTALL_PREFIX="$PWD/libc_install" \
+    -DLLVM_ENABLE_RUNTIMES='libcxx;libcxxabi;libunwind' \
+    -DLLVM_ENABLE_PER_TARGET_RUNTIME_DIR=OFF \
+    -DLIBCXXABI_USE_LLVM_UNWINDER=ON
+\end{lstlisting}
+
+\subsection{Сборка CppTrader на GCC с отладочной информацией}
+\label{app:cmd-gcc}
+\begin{lstlisting}
+cmake -S . -B temp \
+  -DCMAKE_C_FLAGS_RELEASE='-O3 -DNDEBUG -g' \
+  -DCMAKE_CXX_FLAGS_RELEASE='-O3 -DNDEBUG -g'
+(cd build && ./unix.sh)
+\end{lstlisting}
+
+\subsection{Конфигурация сборки CppTrader на Clang}
+\label{app:cmd-cpptrader}
+\begin{lstlisting}
+cmake -S CppTrader -B "$build" \
+        -G 'Unix Makefiles' \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_C_COMPILER="$clang_bin/clang" \
+        -DCMAKE_CXX_COMPILER="$clang_bin/clang++" \
+        -DCMAKE_C_FLAGS_RELEASE='-O3 -DNDEBUG -g' \
+        -DCMAKE_CXX_FLAGS_RELEASE='-O3 -DNDEBUG -g' \
+        -DCMAKE_CXX_FLAGS="-isystem $libcxx_prefix/include/c++/v1" \
+        -DCMAKE_EXE_LINKER_FLAGS="-L$libdir -Wl,--disable-new-dtags,-rpath,$libdir" \
+        -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+\end{lstlisting}
+
+\subsection{Контрольный прогон CppTrader на полном файле ITCH}
+\label{app:cmd-itch}
+\begin{lstlisting}
+taskset -c 1 CppTrader/temp/clang-23.1.5/cpptrader-performance-market_manager \
+                            < CppTrader/tools/itch/sample.itch
+\end{lstlisting}
+
+\subsection{Совместная проверка аппаратных счётчиков}
+\label{app:cmd-perf}
+\begin{lstlisting}
+  taskset -c 1 perf stat \
+-e cpu_core/cycles/u \
+-e cpu_core/mem_load_retired.l3_miss/u \
+-e cpu_core/dtlb_load_misses.walk_completed/u \
+-- CppTrader/temp/clang-23.1.5/cpptrader-performance-market_manager \
+< CppTrader/tools/itch/sample.itch
+\end{lstlisting}
+
+\subsection{Прогрев и базовая серия CppTrader}
+\label{app:cmd-baseline}
+\begin{lstlisting}
+cat CppTrader/tools/itch/sample.itch > /dev/null
+
+for run in warmup-1 warmup-2 warmup-3 1 2 3 4 5
+    echo "Run $run"
+
+    taskset -c 1 perf stat --no-big-num -x ';' \
+      -e cpu_core/cycles/u \
+      -e cpu_core/mem_load_retired.l3_miss/u \
+      -e cpu_core/dtlb_load_misses.walk_completed/u \
+      -o \
+        CppTrader/temp/clang-23.1.5/baseline-full-itch/perf-$run.txt \
+      -- \
+      CppTrader/temp/clang-23.1.5/cpptrader-performance-market_manager \
+      < CppTrader/tools/itch/sample.itch \
+      > \
+        CppTrader/temp/clang-23.1.5/baseline-full-itch/bench-$run.txt
+    or break
+end
+\end{lstlisting}
 
 \end{document}
